@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  playlist-maker-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: playlist-maker-backend
+    ports:
+      - "127.0.0.1:8888:8888"
+    environment:
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
+      - APP_REDIRECT_URI=http://127.0.0.1:8888/api/auth/callback
+      - APP_DATABASE_URL=jdbc:sqlite:/data/playlistmaker.db
+    volumes:
+      - playlistmaker_sqlite_data:/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+volumes:
+  playlistmaker_sqlite_data:
+    name: playlistmaker_sqlite_data

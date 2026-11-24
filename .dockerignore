@@ -1,0 +1,16 @@
+.git/
+.gitignore
+target/
+*.class
+*.log
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+.env*
+.specify/
+.agents/
+specs/
+node_modules/
+.idea/
+.vscode/

@@ -194,6 +194,7 @@ components:
       properties:
         erro:
           type: string
+          enum: [SESSAO_EXPIRADA, SINCRONIZACAO_EM_ANDAMENTO, RATE_LIMIT_EXCEDIDO, PREMIUM_REQUERIDO, ERRO_COMUNICACAO]
           example: "SESSAO_EXPIRADA"
         mensagem:
           type: string

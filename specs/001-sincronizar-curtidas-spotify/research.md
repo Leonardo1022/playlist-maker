@@ -75,25 +75,43 @@ Conforme estabelecido no **Princípio V da Constituição**, todos os endpoints 
   - Se `tempo_espera <= 60 segundos`: Pausar a thread com `Thread.sleep` (ou backoff assíncrono) pelo período indicado e retentar a requisição até o limite de 3 tentativas consecutivas.
   - Se `tempo_espera > 60 segundos`: Suspender a sincronização, registrar o status no histórico e notificar a interface informando os minutos/segundos necessários antes de nova tentativa.
 
+### 1.5 Tratamento de Conta Sem Spotify Premium (Princípio I)
+- **URL da Documentação**: `https://developer.spotify.com/documentation/web-api/concepts/developer-terms-and-policies` e `https://developer.spotify.com/documentation/web-api/reference/get-current-users-profile`
+- **Data da Conferência**: 2026-11-24
+- **Endpoint**: `GET https://api.spotify.com/v1/me`
+- **Regra e Comportamento**: Conforme o Princípio I da Constituição, o modo de desenvolvimento do Spotify impõe restrições em que a conta do desenvolvedor/dono do app exige assinatura Premium ativa. Caso o perfil retorne `product != "premium"` ou a API retorne `403 Forbidden` com restrições de produto/desenvolvedor:
+  - O sistema captura o erro especificamente e retorna o status estruturado `PREMIUM_REQUERIDO`.
+  - Mensagem acionável ao usuário em português: "Sua conta do Spotify não possui plano Premium ativo. A aplicação opera em modo de desenvolvimento do Spotify, exigindo uma conta Premium para acesso e sincronização da biblioteca."
+
 ---
 
 ## 2. Decisões Tecnológicas e Justificativas
 
 ### 2.1 Backend e Framework
-- **Decisão**: Java 21 LTS com Spring Boot 3.3.x e Apache Maven.
+- **Decisão**: Java 21 LTS (`21.0.5`), Spring Boot `3.4.0` e Apache Maven `3.9.9`.
+- **Status de Suporte do Spring Boot 3.4.0**:
+  - Lançamento oficial: 21 de novembro de 2024.
+  - Suporte Comunitário (OSS): Ativo até 24 de novembro de 2025.
+  - Suporte Comercial estendido: Até novembro de 2027.
+  - Compatibilidade: Suporta nativamente Java 21 LTS e Spring Framework 6.2, sendo a versão moderna estável recomendada para novas aplicações baseadas no JDK 21.
 - **Racional**: Cumpre a exigência constitucional (Princípio VII). O Java 21 oferece Virtual Threads, Records para DTOs imutáveis, Pattern Matching e `HttpClient` moderno. O Spring Boot fornece ecossistema maduro para REST, injeção de dependências e testes integrados.
 - **Alternativas Rejeitadas**:
   - Java 17: Rejeitado por não ser a versão fixada na constituição (Java 21).
+  - Spring Boot 3.3.x: Embora estável, sua janela de suporte OSS encerra-se antes da linha 3.4.
   - Frameworks reativos (WebFlux): Rejeitado pelo Princípio VII (simplicidade arquitetural; programação imperativa tradicional com Virtual Threads atende amplamente à volumetria de um único usuário).
 
-### 2.2 Banco de Dados Local e Persistência
-- **Decisão**: SQLite 3 gerenciado via `org.xerial:sqlite-jdbc` e Spring `JdbcClient` / `JdbcTemplate`, com migrações via Flyway (`flyway-core`).
-- **Racional**:
+### 2.2 Banco de Dados Local, Persistência e Controle de Esquema (Flyway)
+- **Decisão**: SQLite 3 gerenciado via `org.xerial:sqlite-jdbc` e Spring `JdbcClient` / `JdbcTemplate`, com migrações gerenciadas pelo Flyway (`org.flywaydb:flyway-core`).
+- **Justificativa do Flyway (Complexity Tracking)**:
+  - *Problema*: O SQLite armazena o banco em arquivo persistente no volume Docker. A criação manual de tabelas via scripts ad-hoc em Java ou SQL não versionado impede evolução segura e idempotente do esquema (criação de tabelas, índices e futuras colunas), gerando risco de corrupção ou inconsistência entre ambientes de desenvolvimento e teste.
+  - *Solução com Flyway*: Versionamento declarativo com migrações SQL imutáveis (`V1__...`, `V2__...`), executadas automaticamente no bootstrap da aplicação.
+  - *Alternativa mais simples rejeitada*: Execução de script imperativo no startup via `schema.sql` do Spring Boot foi rejeitada porque não possui controle de versão de migrações (`schema_version`), falha ao lidar com alterações incrementais em bancos já existentes e não oferece rastreabilidade de migrações aplicadas.
+- **Racional do `JdbcClient`**:
   - O SQLite armazena todos os dados em um único arquivo no volume nomeado Docker (`playlistmaker_sqlite_data`).
   - O uso de `JdbcClient` (Spring 6) mantém o código enxuto, sem necessidade de dialetos JPA/Hibernate complexos que costumam apresentar incompatibilidades com recursos nativos do SQLite (como `UPSERT` e transações DDL).
   - Mantém o domínio 100% puro, sem anotações `@Entity` ou dependências de frameworks ORM.
 - **Alternativas Rejeitadas**:
-  - Spring Data JPA / Hibernate: Rejeitado para evitar sobrecarga de sessão, mapeamentos bidirecionais e inconsistências com SQLite.
+  - Spring Data JPA / Hibernate: Rejeitado para evitar sobrecarga de sessão, mapeamentos bidirecionais e inconsistências de dialeto com SQLite.
   - Arquivos JSON planos: Rejeitado por falta de transacionalidade e suporte a consultas estruturadas eficientes para 700+ músicas.
 
 ### 2.3 Arquitetura Hexagonal Leve
@@ -113,39 +131,58 @@ Conforme estabelecido no **Princípio V da Constituição**, todos os endpoints 
   4. Backend valida o `state`, recupera o `code_verifier`, envia requisição `POST /api/token` com PKCE e persiste `refresh_token` e `access_token` no SQLite.
   5. Assegura que nenhum token ou segredo seja exibido em logs estruturados (Princípio X).
 
-### 2.5 Estratégia de Sincronização Incremental Idempotente
-- **Decisão**:
-  - A sincronização executa leitura paginada de 50 em 50 faixas até `offset + limit >= total`.
-  - Conforme cada lote de 50 é lido, as faixas locais sem identificador Spotify são descartadas.
-  - O sistema calcula o delta:
-    - *Novas faixas*: presentes no lote do Spotify mas inexistentes na base local -> inseridas no banco.
-    - *Faixas mantidas*: atualiza metadados e data de sincronização (`UPSERT`).
-  - Ao final da leitura de todos os lotes do Spotify, qualquer faixa presente no banco local com `fonte = 'spotify'` cujo identificador não tenha sido encontrado na varredura remota é removida da tabela local (`DELETE FROM faixa_curtida WHERE id NOT IN (...)`).
-  - Resumo de sincronização (`total`, `novas`, `removidas`) é gravado em `registro_sincronizacao` e retornado na API.
+### 2.5 Estratégia de Sincronização Incremental, Execução em Segundo Plano e Idempotência
+- **Por que a sincronização "incremental" ainda percorre toda a biblioteca remota**:
+  - A API do Spotify não disponibiliza endpoints de delta, changelog, webhooks ou parâmetros de data de modificação (`since` ou `modified_after`) para a biblioteca de músicas curtidas (`/v1/me/tracks`).
+  - Para detectar músicas que o usuário *deixou de curtir* (removidas), é impossível saber quais faixas foram excluídas sem comparar a totalidade atual das curtidas do Spotify com a base local.
+  - Portanto, a sincronização é **incremental no processamento e na persistência local**, e não no consumo da API remota:
+    1. *Persistência eficiente*: Faixas já presentes localmente sofrem apenas `UPSERT` sem disparar escrita desnecessária;
+    2. *Isolamento de enriquecimento futuro (Princípio IV)*: As faixas existentes que já possuírem metadados de áudio e tags NÃO sofrerão chamadas de enriquecimento em features futuras; somente faixas classificadas como *novas* serão encaminhadas para enriquecimento;
+    3. *Remoção determinística*: As faixas locais ausentes na varredura remota são excluídas do SQLite, mantendo a base estritamente espelhada às curtidas ativas.
+- **Execução em Segundo Plano (Assíncrona) e Prevenção de Execuções Simultâneas**:
+  - A sincronização é **assíncrona (segundo plano)**. O endpoint `POST /api/sincronizacao` dispara a tarefa em thread de segundo plano e retorna imediatamente `202 Accepted`.
+  - *Prevenção de execuções simultâneas*:
+    - Na JVM: Uso de lock explícito de exclusão mútua (`ReentrantLock` com `tryLock()` ou `AtomicBoolean`). Se uma sincronização já estiver em execução, qualquer nova requisição recebe status `409 Conflict` imediatamente com a mensagem `"Já existe uma sincronização em andamento"`.
+    - No Banco de Dados: O registro corrente em `registro_sincronizacao` mantém o status `EM_ANDAMENTO`.
+  - A interface acompanha o progresso em tempo real consultando `GET /api/sincronizacao/status` (polling).
+- **Manutenção do Histórico de Sincronizações (Requisitos FR-010 e FR-011 do spec.md)**:
+  - Para cumprir rigorosamente o `FR-010` (apresentar total de curtidas, novas e removidas) e o `FR-011` (registrar data/hora da coleta e fonte de dados), cada execução gera um registro persistido na tabela `registro_sincronizacao`, permitindo consultar o resultado da última sincronização mesmo após reiniciar a aplicação.
 
-### 2.6 Estratégia de Testes por Camada e JaCoCo (Princípio VIII)
-- **Decisão**:
-  - **Unitários**: Testes de domínio (`ServicoSincronizacaoTest`, `ServicoAutenticacaoTest`, entidades) sem nenhum container ou mock de rede complexo. Cobertura: 100% de linhas e 100% de branches.
-  - **Integração com WireMock**: `AdaptadorSpotifyClientTest` rodando contra servidor WireMock em porta dinâmica, usando fixtures JSON baseadas em payloads reais do Spotify gravadas em `src/test/resources/fixtures/spotify/`:
+### 2.6 Estratégia de Testes por Camada, JaCoCo e Segurança de Logs (Princípio VIII e X)
+- **Decisão de Testes**:
+  - **Unitários**: Testes de domínio (`ServicoSincronizacaoTest`, `ServicoAutenticacaoTest`, entidades) cobrindo 100% de linhas e branches do domínio.
+  - **Integração com WireMock**: `AdaptadorSpotifyClientWireMockTest` rodando contra servidor WireMock com fixtures JSON baseadas em payloads reais do Spotify:
     - `saved-tracks-page1.json` (50 faixas)
-    - `saved-tracks-page2.json` (com faixas locais e músicas normais)
+    - `saved-tracks-page2.json` (faixas normais e locais)
     - `saved-tracks-empty.json`
     - `token-response.json`
     - `rate-limit-429.json`
-  - **Integração com SQLite**: `AdaptadorRepositorioSqliteTest` rodando com SQLite real em arquivo temporário (isolado por teste).
-  - **Ponta a Ponta (E2E)**: `@SpringBootTest` com todos os serviços externos apontando para WireMock, executando o ciclo completo: conectar conta -> sincronizar 700+ faixas simuladas -> consultar base local.
-  - **JaCoCo Plugin**: Executado no ciclo `mvn verify`, com regras mínimas de falha de build:
-    - Regra 1: Pacote `core.dominio` com 100% de linhas e branches.
-    - Regra 2: Backend geral com no mínimo 90% de linhas e 85% de branches.
-    - Exclusões justificadas: classes de configuração Spring pura (`@Configuration`) e DTOs de mapeamento JSON sem lógica de negócio.
+  - **Integração com SQLite**: `RepositoriosSqliteTest` rodando com SQLite em arquivo temporário isolado e migrações Flyway.
+  - **Ponta a Ponta (E2E)**: `@SpringBootTest` com WireMock simulando o fluxo completo de autenticação e sincronização.
+- **Teste de Não Vazamento de Tokens em Log (Princípio II e X)**:
+  - Criação do teste automatizado `SegurancaLogsTest` utilizando `OutputCaptureExtension` do Spring Boot com nível de log em DEBUG, assegurando via asserções explícitas (`assertThat(logs).doesNotContain(accessToken).doesNotContain(refreshToken)`) que nenhuma credencial é emitida nos logs.
+- **Exclusões Explícitas da Medição do JaCoCo e Justificativas (Princípio VIII)**:
+  Conforme o Princípio VIII da Constituição, todas as exclusões são restritas a configurações puras e DTOs sem lógica:
+  1. `br.com.playlistmaker.PlaylistMakerApplication`: Classe principal de bootstrap do Spring Boot, contendo apenas a invocação estática padrão `SpringApplication.run`.
+  2. `br.com.playlistmaker.adaptadores.saida.persistencia.sqlite.ConfiguracaoBancoDados`: Classe `@Configuration` pura do Spring responsável por instanciar os beans de `DataSource` SQLite e `JdbcClient`.
+  3. `br.com.playlistmaker.adaptadores.saida.spotify.ConfiguracaoSpotifyClient`: Classe `@Configuration` pura do Spring responsável por configurar a URL base e o client HTTP do `RestClient`.
+  4. `br.com.playlistmaker.adaptadores.entrada.rest.dto.*`: Records/DTOs imutáveis de entrada e saída da API REST sem nenhuma lógica de negócio ou ramificação condicional.
+  5. `br.com.playlistmaker.adaptadores.saida.spotify.dto.*`: Records/DTOs imutáveis de desserialização JSON das respostas do Spotify sem regras de negócio.
 
-### 2.7 Docker e Compose (Princípio IX)
+### 2.7 Docker, Compose e .dockerignore (Princípio IX)
 - **Decisão**:
-  - `Dockerfile` com multi-estágio:
+  - `.dockerignore` obrigatório na raiz do projeto para impedir vazamento de segredos, binários ou arquivos temporários para o contexto de build. Contém:
+    - `.git/`, `.gitignore`
+    - `target/`
+    - `.env*`
+    - `*.db`, `*.db-journal`
+    - `.specify/`, `.agents/`
+    - `specs/`
+  - `Dockerfile` multi-estágio com tags exatas fixadas:
     - Builder: `maven:3.9.9-eclipse-temurin-21`
-    - Runtime: `eclipse-temurin:21-jre-jammy` executando como usuário não-root `appuser`.
+    - Runtime: `eclipse-temurin:21.0.5_11-jre-jammy` executando com usuário não-root `appuser`.
   - `docker-compose.yml`:
     - Serviço: `playlist-maker-backend`.
-    - Porta: `127.0.0.1:8888:8888`.
+    - Porta: `127.0.0.1:8888:8888` (estritamente loopback).
     - Volume nomeado: `playlistmaker_sqlite_data:/data`.
     - Sem Ollama, sem Vue, sem ReccoBeats, sem Last.fm (escopo restrito a esta funcionalidade).

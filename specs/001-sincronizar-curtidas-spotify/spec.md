@@ -98,6 +98,7 @@ Como usuário, quero receber avisos compreensíveis e orientações acionáveis 
 - **Queda de conexão de internet e retomada**: Se a rede falhar durante o processamento, as faixas já salvas permanecem íntegras na base local e uma mensagem de erro é exibida. Na tentativa subsequente, a sincronização recomeça do início de forma idempotente, sem necessidade de cursores intermediários.
 - **Alteração de curtidas simultânea à sincronização**: Caso o usuário curta ou descurta músicas enquanto a sincronização está paginando a biblioteca, o tratamento por identificador único deve garantir idempotência, evitando duplicidade de registros na base local.
 - **Interrupção voluntária ou cancelamento da autorização**: Se o usuário fechar a janela de consentimento ou recusar as permissões solicitadas, a aplicação deve retornar ao estado não conectado sem inconsistências, exibindo aviso claro de que a conexão não foi concluída.
+- **Conta sem plano Spotify Premium ativo**: Caso o usuário conecte uma conta que não possua Spotify Premium ativo (ou a API do Spotify retorne erro de restrição de produto/desenvolvedor), o sistema deve identificar a condição e apresentar mensagem clara em português informando que a aplicação opera em modo de desenvolvimento do Spotify, exigindo conta Premium ativa.
 
 ## Requirements *(mandatory)*
 
@@ -113,18 +114,19 @@ Como usuário, quero receber avisos compreensíveis e orientações acionáveis 
 - **FR-008**: O sistema DEVE realizar a sincronização de forma incremental: na primeira sincronização, incluir todas as faixas válidas; nas sincronizações subsequentes, incluir apenas novas faixas curtidas e remover da base local aquelas que deixaram de estar curtidas no Spotify.
 - **FR-009**: O sistema NÃO DEVE realizar nenhuma operação de escrita, modificação ou remoção de faixas curtidas na conta do Spotify do usuário (leitura estrita da biblioteca).
 - **FR-010**: O sistema DEVE apresentar ao final de cada sincronização um resumo contendo: o total de faixas curtidas na base local, a quantidade de faixas novas adicionadas e a quantidade de faixas removidas.
-- **FR-011**: O sistema DEVE registrar para cada faixa e para cada evento de sincronização a data/hora da coleta e a respectiva fonte de dados.
+- **FR-011**: O sistema DEVE persistir um histórico estruturado de cada sincronização executada (contendo data/hora de início e fim, status, total de faixas, novas e removidas) e registrar para cada faixa a data/hora da coleta e a respectiva fonte de dados.
 - **FR-012**: O sistema DEVE utilizar a base local como repositório para todas as consultas de músicas curtidas do usuário, sem emitir chamadas ao serviço externo durante tais consultas.
 - **FR-013**: Em caso de limitação de taxa de requisições pelo Spotify com tempo de espera curto (até 60 segundos), o sistema DEVE aguardar automaticamente o tempo solicitado e retomar a sincronização sem intervenção manual.
 - **FR-014**: Em caso de limitação de taxa de requisições pelo Spotify com tempo de espera prolongado (superior a 60 segundos), o sistema DEVE interromper a sincronização preservando os dados já gravados e exibir notificação em português informando em quanto tempo o usuário poderá tentar novamente.
-- **FR-015**: O sistema DEVE exibir na interface um indicador de progresso com a contagem de faixas lidas em tempo real (ex.: "Processando X faixas...") enquanto a sincronização estiver em andamento, mantendo novas ações de disparo desabilitadas até a conclusão.
+- **FR-015**: O sistema DEVE executar a sincronização em segundo plano de forma assíncrona sob demanda e DEVE bloquear execuções simultâneas por meio de controle de concorrência exclusivo, rejeitando novas tentativas de disparo com aviso claro de que uma sincronização já está em andamento, enquanto exibe na interface um indicador de progresso com a contagem de faixas lidas em tempo real (ex.: "Processando X faixas...").
 - **FR-016**: Em caso de interrupção anterior por falha de rede ou esgotamento de tempo de espera, o sistema DEVE reiniciar o processo a partir do início na sincronização seguinte, garantindo atualização idempotente da base local sem armazenar cursores parciais de paginação.
+- **FR-017**: O sistema DEVE identificar contas sem assinatura Spotify Premium ativa (ou restrições de produto da API) e exibir mensagem explicativa em português orientando o usuário sobre a necessidade de plano Premium para a utilização da aplicação.
 
 ### Key Entities *(include if feature involves data)*
 
 - **SessaoUsuario**: Representa a sessão de autenticação e autorização do usuário perante o Spotify. Contém atributos conceituais sobre validade do acesso, data/hora da última autorização e estado da conexão (ativa, expirada, revogada).
 - **FaixaCurtida**: Representa uma música curtida do usuário armazenada na base local. Contém atributos conceituais como identificador único no serviço externo, título da música, artistas, álbum, duração, data em que foi curtida no serviço externo e data da última sincronização local.
-- **RegistroSincronizacao**: Representa a execução de um processo de sincronização sob demanda. Contém atributos conceituais de data/hora de execução, estado final (sucesso, interrompido por cota, erro de rede), total final de músicas curtidas na base local, quantidade de faixas novas inseridas e quantidade de faixas removidas.
+- **RegistroSincronizacao**: Representa o histórico persistido de cada sincronização sob demanda (atendendo aos requisitos FR-010 e FR-011). Contém atributos conceituais de data/hora de início e término, estado final (sucesso, interrompido por cota, erro de rede), total final de músicas curtidas na base local, quantidade de faixas novas inseridas e quantidade de faixas removidas.
 
 ## Success Criteria *(mandatory)*
 

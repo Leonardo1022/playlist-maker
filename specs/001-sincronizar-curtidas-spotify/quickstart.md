@@ -34,7 +34,8 @@ O comando executa:
 1. **Testes Unitários de Domínio**: Entidades, regras de sincronização incremental, detecção de deltas e filtros de arquivos locais (100% de cobertura de linhas e branches).
 2. **Testes de Integração com WireMock**: `AdaptadorSpotifyClientTest` simulando paginação de 700+ faixas, respostas `429 Too Many Requests` com cabeçalho `Retry-After` e renovação de token PKCE usando fixtures gravadas em `src/test/resources/fixtures/spotify/`.
 3. **Testes de Integração com SQLite**: `AdaptadorRepositorioSqliteTest` executando migrações Flyway e operações de banco em arquivo temporário.
-4. **Verificação JaCoCo**: Falha imediata de build se o pacote de domínio estiver abaixo de 100% ou se o backend estiver abaixo de 90% de linhas e 85% de branches.
+4. **Teste de Segurança de Logs (Princípios II e X)**: `SegurancaLogsTest` validando via asserções que credenciais e tokens não vazam nas saídas de log estruturado.
+5. **Verificação JaCoCo**: Falha imediata de build se o pacote de domínio estiver abaixo de 100% ou se o backend estiver abaixo de 90% de linhas e 85% de branches (com as 5 exclusões justificadas).
 
 ---
 
@@ -156,3 +157,16 @@ curl -s http://127.0.0.1:8888/api/auth/status
 curl -s "http://127.0.0.1:8888/api/curtidas?limite=5"
 ```
 A sessão permanece ativa (`conectado: true`) e as músicas continuam disponíveis, comprovando a integridade do volume nomeado do SQLite.
+
+### Cenário 7: Simulação de Conta Sem Spotify Premium (FR-017)
+Caso o usuário tente operar com conta gratuita ou a API retorne restrição de produto:
+```bash
+curl -s http://127.0.0.1:8888/api/auth/callback?error=premium_required
+```
+Resposta esperada (HTTP 400 Bad Request):
+```json
+{
+  "erro": "PREMIUM_REQUERIDO",
+  "mensagem": "Sua conta do Spotify não possui plano Premium ativo. A aplicação opera em modo de desenvolvimento do Spotify, exigindo uma conta Premium para acesso e sincronização da biblioteca."
+}
+```

@@ -129,6 +129,7 @@ components:
       properties:
         erro:
           type: string
+          enum: [AUTORIZACAO_CANCELADA, STATE_INVALIDO, PREMIUM_REQUERIDO, ERRO_COMUNICACAO]
           example: "AUTORIZACAO_CANCELADA"
         mensagem:
           type: string

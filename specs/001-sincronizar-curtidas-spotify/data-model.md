@@ -46,7 +46,7 @@ Representa o estado de autorização e credenciais de acesso da conta Spotify do
   - O sistema renova o `accessToken` automaticamente se faltarem menos de 60 segundos para `expiraEm`.
 
 ### 1.3 `RegistroSincronizacao`
-Registra o histórico e o status de cada sincronização sob demanda disparada.
+Registra o histórico persistido de cada sincronização sob demanda atendendo diretamente aos requisitos **FR-010** (resumo com total de curtidas, novas e removidas) e **FR-011** (registro de data/hora e fonte de coleta) do `spec.md`. Além de fornecer auditoria e rastreabilidade entre reinicializações da aplicação, atua em conjunto com o lock em memória da aplicação para sinalizar o estado do processamento assíncrono em segundo plano e prevenir execuções simultâneas (**FR-015**).
 
 - **Campos**:
   - `id` (`Long`): Identificador sequencial da execução.
@@ -58,6 +58,12 @@ Registra o histórico e o status de cada sincronização sob demanda disparada.
   - `removidasFaixas` (`int`): Quantidade de faixas descurtidas excluídas da base local.
   - `mensagem` (`String`): Detalhamento do status ou mensagem de erro em português.
   - `tempoEsperaSegundos` (`Integer`): Tempo indicado no cabeçalho `Retry-After` caso status seja `LIMITADO`.
+
+- **Regras de Concorrência e Histórico (FR-015)**:
+  - Ao iniciar a sincronização assíncrona, um novo registro é persistido com status `EM_ANDAMENTO`.
+  - Se outra requisição for disparada enquanto existir um registro com status `EM_ANDAMENTO` (ou enquanto o lock em memória estiver adquirido), a operação é rejeitada com conflito (`409 Conflict`), preservando a consistência dos dados.
+  - Ao finalizar (com sucesso, limite de taxa ou erro), os campos `finalizadoEm`, `status`, contadores e `mensagem` são atualizados.
+  - O histórico de todas as execuções anteriores permanece gravado para auditoria e consulta do último resultado.
 
 ---
 
