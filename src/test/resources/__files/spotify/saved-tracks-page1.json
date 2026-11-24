@@ -1,0 +1,39 @@
+{
+  "href": "https://api.spotify.com/v1/me/tracks?offset=0&limit=2",
+  "items": [
+    {
+      "added_at": "2026-01-15T10:00:00Z",
+      "track": {
+        "id": "track-id-001",
+        "name": "Starlight",
+        "artists": [
+          { "name": "Muse" }
+        ],
+        "album": {
+          "name": "Black Holes and Revelations"
+        },
+        "duration_ms": 240000,
+        "is_local": false
+      }
+    },
+    {
+      "added_at": "2026-01-16T12:00:00Z",
+      "track": {
+        "id": "track-id-002",
+        "name": "Time is Running Out",
+        "artists": [
+          { "name": "Muse" }
+        ],
+        "album": {
+          "name": "Absolution"
+        },
+        "duration_ms": 237000,
+        "is_local": false
+      }
+    }
+  ],
+  "limit": 2,
+  "next": "https://api.spotify.com/v1/me/tracks?offset=2&limit=2",
+  "offset": 0,
+  "total": 3
+}

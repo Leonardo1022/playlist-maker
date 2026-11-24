@@ -1,0 +1,24 @@
+{
+  "href": "https://api.spotify.com/v1/me/tracks?offset=2&limit=2",
+  "items": [
+    {
+      "added_at": "2026-01-17T15:00:00Z",
+      "track": {
+        "id": "track-id-003",
+        "name": "Knights of Cydonia",
+        "artists": [
+          { "name": "Muse" }
+        ],
+        "album": {
+          "name": "Black Holes and Revelations"
+        },
+        "duration_ms": 366000,
+        "is_local": false
+      }
+    }
+  ],
+  "limit": 2,
+  "next": null,
+  "offset": 2,
+  "total": 3
+}

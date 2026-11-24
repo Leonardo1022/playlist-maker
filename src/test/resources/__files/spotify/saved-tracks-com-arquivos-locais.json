@@ -1,0 +1,54 @@
+{
+  "href": "https://api.spotify.com/v1/me/tracks?offset=0&limit=3",
+  "items": [
+    {
+      "added_at": "2026-01-15T10:00:00Z",
+      "track": {
+        "id": "track-id-001",
+        "name": "Starlight",
+        "artists": [
+          { "name": "Muse" }
+        ],
+        "album": {
+          "name": "Black Holes and Revelations"
+        },
+        "duration_ms": 240000,
+        "is_local": false
+      }
+    },
+    {
+      "added_at": "2026-01-18T09:00:00Z",
+      "track": {
+        "id": null,
+        "name": "Minha Musica Local Gravada",
+        "artists": [
+          { "name": "Artista Local" }
+        ],
+        "album": {
+          "name": "Album Caseiro"
+        },
+        "duration_ms": 180000,
+        "is_local": true
+      }
+    },
+    {
+      "added_at": "2026-01-19T11:00:00Z",
+      "track": {
+        "id": "local-track-marked",
+        "name": "Musica com Flag Local",
+        "artists": [
+          { "name": "Banda da Garagem" }
+        ],
+        "album": {
+          "name": "Demo"
+        },
+        "duration_ms": 200000,
+        "is_local": true
+      }
+    }
+  ],
+  "limit": 3,
+  "next": null,
+  "offset": 0,
+  "total": 3
+}
