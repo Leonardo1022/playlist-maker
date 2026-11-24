@@ -1,0 +1,204 @@
+openapi: 3.0.3
+info:
+  title: API de Sincronização e Consulta de Músicas Curtidas
+  description: Endpoints locais para disparo de sincronização sob demanda, acompanhamento em tempo real e consulta da base local.
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:8888
+    description: Servidor local em loopback
+
+paths:
+  /api/sincronizacao:
+    post:
+      summary: Dispara a sincronização sob demanda das músicas curtidas
+      operationId: triggerSync
+      responses:
+        '202':
+          description: Sincronização iniciada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncStartedResponse'
+        '409':
+          description: Sincronização já em andamento
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '401':
+          description: Sessão não autorizada ou expirada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+
+  /api/sincronizacao/status:
+    get:
+      summary: Consulta o progresso em tempo real da sincronização atual ou o resumo da última execução
+      operationId: getSyncStatus
+      responses:
+        '200':
+          description: Status atual do processamento
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncStatusResponse'
+
+  /api/curtidas:
+    get:
+      summary: Consulta as faixas curtidas armazenadas na base local (sem requisição ao Spotify)
+      operationId: getLikedTracks
+      parameters:
+        - name: limite
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+          description: Limite de faixas retornadas por página
+        - name: deslocamento
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Índice inicial de retorno
+      responses:
+        '200':
+          description: Lista paginada de músicas curtidas locais
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LikedTracksResponse'
+
+components:
+  schemas:
+    SyncStartedResponse:
+      type: object
+      required:
+        - status
+        - mensagem
+      properties:
+        status:
+          type: string
+          example: "EM_ANDAMENTO"
+        mensagem:
+          type: string
+          example: "Sincronização iniciada"
+
+    SyncStatusResponse:
+      type: object
+      required:
+        - status
+        - mensagem
+      properties:
+        status:
+          type: string
+          enum: [PARADO, EM_ANDAMENTO, CONCLUIDO, LIMITADO, ERRO]
+          example: "EM_ANDAMENTO"
+        faixasProcessadas:
+          type: integer
+          example: 250
+        totalEstimado:
+          type: integer
+          nullable: true
+          example: 742
+        totalCurtidasLocal:
+          type: integer
+          example: 742
+        novasFaixas:
+          type: integer
+          example: 5
+        removidasFaixas:
+          type: integer
+          example: 2
+        tempoEsperaSegundos:
+          type: integer
+          nullable: true
+          example: 0
+        mensagem:
+          type: string
+          example: "Processando 250 faixas..."
+        finalizadoEm:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-11-24T07:35:10Z"
+
+    LikedTracksResponse:
+      type: object
+      required:
+        - total
+        - limite
+        - deslocamento
+        - itens
+      properties:
+        total:
+          type: integer
+          example: 742
+        limite:
+          type: integer
+          example: 50
+        deslocamento:
+          type: integer
+          example: 0
+        itens:
+          type: array
+          items:
+            $ref: '#/components/schemas/FaixaLocal'
+
+    FaixaLocal:
+      type: object
+      required:
+        - id
+        - titulo
+        - artistas
+        - album
+        - duracaoMs
+        - curtidaEm
+        - sincronizadaEm
+      properties:
+        id:
+          type: string
+          example: "7ouMYWpwJ422jRcDASZB7P"
+        titulo:
+          type: string
+          example: "Knights of Cydonia"
+        artistas:
+          type: string
+          example: "Muse"
+        album:
+          type: string
+          example: "Black Holes and Revelations"
+        duracaoMs:
+          type: integer
+          example: 366213
+        curtidaEm:
+          type: string
+          format: date-time
+          example: "2026-01-15T14:30:00Z"
+        sincronizadaEm:
+          type: string
+          format: date-time
+          example: "2026-11-24T07:35:10Z"
+        fonte:
+          type: string
+          example: "spotify"
+
+    ErroResponse:
+      type: object
+      required:
+        - erro
+        - mensagem
+      properties:
+        erro:
+          type: string
+          example: "SESSAO_EXPIRADA"
+        mensagem:
+          type: string
+          example: "Sessão expirada. Faça login de novo."
+        tempoEsperaSegundos:
+          type: integer
+          nullable: true
+          example: 120

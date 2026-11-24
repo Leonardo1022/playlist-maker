@@ -17,6 +17,13 @@ Comportamentos esperados:
 - Se o Spotify limitar as requisições, aguardar o tempo indicado; se o tempo for longo demais, avisar em quanto tempo tentar de novo.
 - Funciona para bibliotecas de 700 ou mais faixas."
 
+## Clarifications
+
+### Session 2026-11-24
+
+- Q: Como o usuário deve acompanhar o andamento da sincronização na interface enquanto ela estiver sendo executada? (FR-010) → A: Indicador com contagem de faixas lidas em tempo real (ex.: "Processando X faixas...").
+- Q: Caso a sincronização seja interrompida por falha de rede ou tempo de espera prolongado, como deve ser o comportamento da próxima tentativa de sincronização? (FR-008) → A: Executar uma nova sincronização do início, atualizando a base de forma idempotente sem salvar cursores intermediários.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Conexão inicial da conta Spotify e persistência de sessão (Priority: P1)
@@ -41,7 +48,7 @@ Como usuário conectado, quero solicitar sob demanda a sincronização das minha
 
 **Why this priority**: É a proposta de valor central da funcionalidade: garantir autonomia e rapidez nas consultas locais das faixas curtidas sem dependência contínua da API externa a cada requisição.
 
-**Independent Test**: Pode ser testado de forma independente disparando a sincronização em uma conta com acervo de 700 ou mais músicas curtidas (incluindo arquivos locais): o sistema deve ignorar os arquivos locais, salvar todas as faixas com identificador Spotify e exibir o resumo exato (total, novas e removidas). Posteriormente, ao adicionar uma nova curtida e descurtir uma música existente no Spotify, uma nova sincronização deve refletir a adição e a remoção com exatidão no resumo e na base local.
+**Independent Test**: Pode ser testado de forma independente disparando a sincronização em uma conta com acervo de 700 ou mais músicas curtidas (incluindo arquivos locais): o sistema deve ignorar os arquivos locais, salvar todas as faixas com identificador Spotify e exibir o resumo exato (total, novas e removidas). Posteriormente, ao adicionar uma nova curtida ou descurtir uma música existente no Spotify, uma nova sincronização deve refletir a adição ou a remoção com exatidão no resumo e na base local.
 
 **Acceptance Scenarios**:
 
@@ -49,6 +56,7 @@ Como usuário conectado, quero solicitar sob demanda a sincronização das minha
 2. **Given** uma base local previamente sincronizada, **When** o usuário adiciona novas faixas às curtidas no Spotify e aciona a sincronização sob demanda, **Then** o sistema identifica e inclui apenas as faixas novas na base local e apresenta o resumo com a contagem de novas adições e o novo total.
 3. **Given** uma base local previamente sincronizada, **When** o usuário remove faixas das suas curtidas no Spotify e aciona a sincronização sob demanda, **Then** o sistema identifica as ausências, remove as respectivas faixas da base local e exibe o total de faixas removidas e o total remanescente no resumo.
 4. **Given** que uma sincronização foi concluída com sucesso, **When** o usuário consulta suas músicas curtidas na aplicação, **Then** os dados são obtidos diretamente da base local sem realizar chamadas externas ao Spotify.
+5. **Given** uma sincronização em andamento, **When** o sistema processa os lotes de faixas, **Then** a interface apresenta um indicador visual com a contagem de faixas lidas em tempo real (ex.: "Processando X faixas...") e mantém novas ações bloqueadas até a finalização.
 
 ---
 
@@ -64,6 +72,7 @@ Como usuário executando a sincronização, quero que o sistema lide de maneira 
 
 1. **Given** uma sincronização em andamento, **When** o provedor indicar limitação de taxa com tempo de espera curto (até 60 segundos), **Then** o sistema pausa as requisições pelo período exato solicitado e retoma a sincronização a partir do ponto de interrupção, finalizando o processo com sucesso.
 2. **Given** uma sincronização em andamento, **When** o provedor indicar limitação de taxa com tempo de espera longo (superior a 60 segundos), **Then** o sistema suspende a sincronização preservando os lotes de músicas já gravados e exibe um aviso em português informando em quantos minutos ou segundos o usuário deve tentar novamente.
+3. **Given** uma sincronização anterior interrompida por cota prolongada ou erro de rede, **When** o usuário aciona uma nova sincronização após o tempo de espera, **Then** o sistema executa o processo completo do início de forma idempotente, atualizando a base local sem gerar duplicações.
 
 ---
 
@@ -86,7 +95,7 @@ Como usuário, quero receber avisos compreensíveis e orientações acionáveis 
 
 - **Presença de arquivos locais**: Músicas originadas de arquivos locais do usuário no aplicativo Spotify não possuem identificador de catálogo externo. O sistema deve ignorar essas entradas sem tratá-las como erros e sem inseri-las na base de dados local.
 - **Biblioteca vazia**: Caso o usuário conecte uma conta sem nenhuma música curtida, a sincronização deve transcorrer normalmente e concluir com resumo indicando total 0, novas 0 e removidas 0.
-- **Queda de conexão de internet durante a sincronização**: Se a rede falhar no meio do processo, o sistema deve garantir que os lotes de músicas já gravados permaneçam consistentes na base local e exibir mensagem amigável de erro de conexão, permitindo reiniciar a sincronização quando a internet retornar.
+- **Queda de conexão de internet e retomada**: Se a rede falhar durante o processamento, as faixas já salvas permanecem íntegras na base local e uma mensagem de erro é exibida. Na tentativa subsequente, a sincronização recomeça do início de forma idempotente, sem necessidade de cursores intermediários.
 - **Alteração de curtidas simultânea à sincronização**: Caso o usuário curta ou descurta músicas enquanto a sincronização está paginando a biblioteca, o tratamento por identificador único deve garantir idempotência, evitando duplicidade de registros na base local.
 - **Interrupção voluntária ou cancelamento da autorização**: Se o usuário fechar a janela de consentimento ou recusar as permissões solicitadas, a aplicação deve retornar ao estado não conectado sem inconsistências, exibindo aviso claro de que a conexão não foi concluída.
 
@@ -108,6 +117,8 @@ Como usuário, quero receber avisos compreensíveis e orientações acionáveis 
 - **FR-012**: O sistema DEVE utilizar a base local como repositório para todas as consultas de músicas curtidas do usuário, sem emitir chamadas ao serviço externo durante tais consultas.
 - **FR-013**: Em caso de limitação de taxa de requisições pelo Spotify com tempo de espera curto (até 60 segundos), o sistema DEVE aguardar automaticamente o tempo solicitado e retomar a sincronização sem intervenção manual.
 - **FR-014**: Em caso de limitação de taxa de requisições pelo Spotify com tempo de espera prolongado (superior a 60 segundos), o sistema DEVE interromper a sincronização preservando os dados já gravados e exibir notificação em português informando em quanto tempo o usuário poderá tentar novamente.
+- **FR-015**: O sistema DEVE exibir na interface um indicador de progresso com a contagem de faixas lidas em tempo real (ex.: "Processando X faixas...") enquanto a sincronização estiver em andamento, mantendo novas ações de disparo desabilitadas até a conclusão.
+- **FR-016**: Em caso de interrupção anterior por falha de rede ou esgotamento de tempo de espera, o sistema DEVE reiniciar o processo a partir do início na sincronização seguinte, garantindo atualização idempotente da base local sem armazenar cursores parciais de paginação.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -125,6 +136,7 @@ Como usuário, quero receber avisos compreensíveis e orientações acionáveis 
 - **SC-004**: 100% das faixas descurtidas no serviço externo são identificadas e removidas da base local na sincronização subsequente.
 - **SC-005**: Ao reiniciar a aplicação, a sessão do usuário é restaurada com sucesso em 100% dos testes sem solicitação de novo login (desde que a autorização não tenha sido revogada).
 - **SC-006**: Ao receber resposta de restrição de taxa do provedor, o sistema respeita 100% do período de espera indicado antes de enviar qualquer nova requisição, fornecendo feedback claro sobre o tempo de espera.
+- **SC-007**: Durante 100% do tempo de execução de uma sincronização sob demanda, a interface atualiza visualmente a contagem de faixas processadas e impede disparos simultâneos concorrentes.
 
 ## Assumptions
 

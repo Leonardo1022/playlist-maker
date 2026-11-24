@@ -1,0 +1,135 @@
+openapi: 3.0.3
+info:
+  title: API de Autenticação com Spotify (PKCE)
+  description: Endpoints locais para gerenciar autorização OAuth 2.0 PKCE com o Spotify.
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:8888
+    description: Servidor local em loopback
+
+paths:
+  /api/auth/status:
+    get:
+      summary: Consulta o estado de conexão da conta
+      operationId: getAuthStatus
+      responses:
+        '200':
+          description: Estado atual da conexão
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthStatusResponse'
+
+  /api/auth/login-url:
+    get:
+      summary: Gera URL de consentimento OAuth 2.0 PKCE para redirecionamento do navegador
+      operationId: getLoginUrl
+      responses:
+        '200':
+          description: URL de autorização gerada com code_challenge e state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginUrlResponse'
+
+  /api/auth/callback:
+    get:
+      summary: Processa o retorno do consentimento do Spotify com o Authorization Code
+      operationId: handleAuthCallback
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Código de autorização retornado pelo Spotify
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Parâmetro state para validação de CSRF
+        - name: error
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Indicador de erro caso o usuário tenha cancelado o consentimento
+      responses:
+        '302':
+          description: Redirecionamento para a página principal da aplicação
+        '200':
+          description: Confirmação de conexão bem-sucedida (caso consumido diretamente por cliente de API)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthCallbackResponse'
+        '400':
+          description: Parâmetro inválido, state incorreto ou cancelamento pelo usuário
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+
+components:
+  schemas:
+    AuthStatusResponse:
+      type: object
+      required:
+        - conectado
+        - status
+      properties:
+        conectado:
+          type: boolean
+          example: true
+        status:
+          type: string
+          enum: [ATIVO, EXPIRADO, DESCONECTADO]
+          example: ATIVO
+        usuarioId:
+          type: string
+          nullable: true
+          example: "spotify_user_123"
+        conectadoEm:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-11-24T07:30:00Z"
+        mensagem:
+          type: string
+          example: "Conta conectada e sessão ativa"
+
+    LoginUrlResponse:
+      type: object
+      required:
+        - authorizationUrl
+      properties:
+        authorizationUrl:
+          type: string
+          example: "https://accounts.spotify.com/authorize?client_id=...&response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A8888%2Fapi%2Fauth%2Fcallback&code_challenge_method=S256&code_challenge=...&state=...&scope=user-library-read%20playlist-modify-private"
+
+    AuthCallbackResponse:
+      type: object
+      required:
+        - status
+        - mensagem
+      properties:
+        status:
+          type: string
+          example: "CONECTADO"
+        mensagem:
+          type: string
+          example: "Conta do Spotify conectada com sucesso"
+
+    ErroResponse:
+      type: object
+      required:
+        - erro
+        - mensagem
+      properties:
+        erro:
+          type: string
+          example: "AUTORIZACAO_CANCELADA"
+        mensagem:
+          type: string
+          example: "O consentimento foi cancelado ou a sessão expirou. Conecte sua conta novamente."
